@@ -1,0 +1,795 @@
+---
+title: "SAP PROJEKT - utjecaj glazbe na mentalno zdravlje"
+output: pdf_document
+author: "Marta Kekić, Erik Kranjec, Patricija Marijanović, Matija Martinović"
+date: "2024-12-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Uvod
+
+U sklopu ovog projekta analiziramo podatke iz ankete o glazbenim preferencijama, navikama slušanja i povezanosti s mentalnim zdravljem. Cilj je kroz zadatke istražiti obrasce i povezanosti unutar prikupljenih podataka.
+
+Zadaci uključuju usporedbu navika slušanja između skladatelja i drugih ispitanika, analizu povezanosti žanrova s mentalnim zdravljem, istraživanje utjecaja streaming servisa na istraživanje nove glazbe, razlike u broju sati slušanja glazbe prema omiljenim žanrovima te ispitivanje mogućnosti predviđanja dobi ispitanika.
+
+Ovaj projekt omogućuje nam praktičnu primjenu metoda analize podataka i dublje razumijevanje istraživačkog procesa.
+
+## Učitavanje podataka, deskriptivna analiza
+
+Učitavamo potrebne pakete.
+
+```{r}
+library(dplyr)
+```
+
+Učitavamo podatke.
+
+```{r}
+# učitavanje podataka iz csv datoteke:
+dataset = read.csv("Music and mental health dataset.csv", sep = ",")
+
+print("NA")
+sum(is.na(dataset))  # Broji ukupan broj NA vrijednosti
+
+# ispis prvih 6 redaka
+head(dataset)
+
+dim(dataset)
+
+```
+
+Podaci se sastoje od 736 redaka (odgovora) i 33 varijabli.
+
+Ispitane varijable:
+
+```{r}
+names(dataset)
+```
+
+Ima li nedostajućih vrijednosti?
+
+```{r}
+# is.na ce nam vratiti logical vektor koji ima TRUE na mjestima gdje ima NA (tamo nedostaje vrijednost):
+for (col_name in names(dataset)){
+  if (sum(is.na(dataset[,col_name])) > 0){
+    cat('Ukupno nedostajućih vrijednosti za varijablu ',col_name, ': ', sum(is.na(dataset[,col_name])),'\n')
+  }
+}
+```
+
+Za stupac Age postoji jedna nedostajeća vrijednost, a za BPM 107. Svi ostali stupci su u potpunosti puni.
+
+Deskriptivna statistika:
+
+```{r}
+summary(dataset)
+```
+
+Tipovi podataka za svaki stupac:
+
+```{r}
+sapply(dataset, class)
+```
+
+Većina stupaca je tipa "character".
+
+## Vizualizacija podataka
+
+```{r}
+hist(dataset$Hours.per.day, main='Prosječan broj sati slušanja glazbe dnevno', xlab='Hours per day', ylab='Frequency')
+
+barplot(table(dataset$Primary.streaming.service),las=2,cex.names=.4,main='Glavna streaming platforma')
+
+barplot(table(dataset$Fav.genre),las=2,cex.names=.6,main='Omiljeni glazbeni žanr')
+
+hist(dataset$Anxiety, main='Samoprocijenjena razina anksioznosti ispitanika (1-10)', xlab='vrijednost 1-10', ylab='Frequency')
+
+hist(dataset$Depression, main='Samoprocijenjena razina depresije ispitanika (1-10)', xlab='vrijednost 1-10', ylab='Frequency')
+
+hist(dataset$Insomnia, main='Samoprocijenjena razina nesanice ispitanika (1-10)', xlab='vrijednost 1-10', ylab='Frequency')
+
+hist(dataset$OCD, main='Samoprocijenjena razina opsesivno-kompulzivnog poremećaja ispitanika', xlab='vrijednost 1-10', ylab='Frequency')
+
+barplot(table(dataset$Music.effects ),las=2,cex.names=.6,main='Utjecaj glazbe na mentalno stanje ispitanika')
+```
+
+## ZADATAK 1. - Slušaju li skladatelji više glazbe dnevno od drugih?
+
+Koliko ima skladatelja:
+
+```{r}
+n1 <- sum(dataset$Composer == "Yes")
+n2 <- sum(dataset$Composer == "No")
+
+cat("skladatelja ima ", n1 ,"\n")
+cat("ne-skladatelja ima ", n2 ,"\n")
+```
+
+Tablica koja sadrži samo skladatelje/ne-skladatelje:
+
+```{r}
+skladatelji = dataset[dataset$Composer == "Yes", ]
+ne_skladatelji = dataset[dataset$Composer == "No", ]
+head(skladatelji)
+head(ne_skladatelji)
+```
+
+Koliko prosječno sati dnevno skladatelji i ne-skladatelji slušaju glazbu?
+
+```{r}
+cat("skladatelji prosječno slušaju ovoliko sati glazbe dnevno: ", mean(skladatelji$Hours.per.day), "\n")
+
+cat("ne-skladatelji prosječno slušaju ovoliko sati glazbe dnevno: ", mean(ne_skladatelji$Hours.per.day), "\n")
+
+cat("skladatelji medijan: ", median(skladatelji$Hours.per.day), "\n")
+cat("ne-skladatelji medijan: ", median(ne_skladatelji$Hours.per.day), "\n")
+
+```
+
+Prosječno skladatelji slušaju više sati glazbe dnevno, ali medijan za obje skupine je isti što može sugerirati da u grupi skladatelja vjerojatno postoji mali broj pojedinaca koji slušaju značajno više glazbe (npr., 10 ili više sati dnevno). Ove ekstremne vrijednosti povlače prosjek naviše, dok medijan ostaje nepromijenjen jer mjeri centralnu vrijednost u poretku. To možemo vidjeti u grafovima ispod:
+
+```{r}
+hist(skladatelji$Hours.per.day, main='SKLADATELJI - Prosječan broj sati slušanja glazbe dnevno', xlab='Hours per day', ylab='Frequency')
+
+```
+
+```{r}
+hist(ne_skladatelji$Hours.per.day, main='NE-SKLADATELJI - Prosječan broj sati slušanja glazbe dnevno', xlab='Hours per day', ylab='Frequency')
+
+```
+
+Iz grafova vidimo da uzorci nisu iz normalne distribucije.
+
+```{r}
+boxplot(skladatelji$Hours.per.day, ne_skladatelji$Hours.per.day, 
+        names = c('Broj sati dnevno - skladatelji','Broj sati devno - ne_skladatelji'),
+        main='Boxplot sati slušanja glazbe dnevno za skladatelje i ne-skladatelje')
+
+```
+
+Budući da su veličine uzorka n1 = 126 (skladatelji), n2 = 609 (ne-skladatelji) možemo koristiti t-test, iako se ne radi o normalnoj distribuciji. T-test je robustan na normalnost, što znači da, čak i ako distribucija nije potpuno normalna, t-test može dati pouzdane rezultate ako je uzorak dovoljno velik (obično n \> 30).
+
+Uzorci su nezavisni (skladatelji i ne-skladatelji su različite skupine, izbor jedne osobe iz jedne skupine ne utječe na izbor druge osobe iz druge skupine)
+
+Postavljamo hipoteze:
+
+𝐻0: 𝜇1=𝜇2 (prosječni broj sati slušanja glazbe dnevno za skladatelje i neskladatelje je jednak)
+
+𝐻1: 𝜇1\>𝜇2 (skladatelji prosječno slušaju više sati glazbe dnevno od drugih)
+
+Provodimo t-test (pretp. da su varijance razlicite):
+
+```{r}
+t.test(skladatelji$Hours.per.day, ne_skladatelji$Hours.per.day, 
+                        alternative = "greater", var.equal = FALSE)
+```
+
+P-vrijednost je vrlo mala (0.0009516), što je manje od tipične razine značajnosti (0.05). Postoji statistički značajna razlika u prosječnom broju sati slušanja glazbe dnevno između skladatelja i ne-skladatelja.
+
+Zaključak: Skladatelji slušaju značajno više glazbe dnevno od drugih.
+
+## ZADATAK 2. - korelacija frekvencije slušanja žanrova i razine mentalnih poremećaja
+
+Istražujemo kolika je korelacija između frekvencija slušanja različitih glazbenih žanrova i samoprocijenjenih razina mentalnih poremećaja. Nadalje, testirat ćemo je li korelacija izmedu frekvencije slušanja metal žanra i samoprocijenjene razine depresije statistički značajna.
+
+Na početku histogramima prikazujemo podatke o frekvenciji slušanja pojedinih glazbenih žanrova.
+
+```{r}
+# Pretvorba 'Frequency [žanr]' u numeričke vrijednosti
+frequency_mapping <- c("Never" = 0, "Rarely" = 1, "Sometimes" = 2, "Very frequently" = 3)
+
+# Popis glazbenih žanrova i mentalnih poremećaja
+
+genres <- c("Classical", "Country", "EDM", "Folk", "Gospel", "Hip.hop", 
+            "Jazz", "K.pop", "Latin", "Lofi", "Metal", "Pop", 
+            "R.B", "Rap", "Rock", "Video.game.music")
+
+mental_health <- c("Anxiety", "Depression", "Insomnia", "OCD")
+
+for (genre in genres){
+  hist(as.numeric(frequency_mapping[dataset[[paste0("Frequency..", genre, ".")]]]), main = genre, xlab = paste0("Koliko često se sluša ", genre))
+}
+```
+
+U nastavku histogramima prikazujemo podatke o samoprocijenjenim razinama anksioznosti, depresije, nesanice i OCD-a.
+
+```{r}
+for (poremecaj in mental_health){
+  hist(dataset[[paste0(poremecaj)]] , 
+       main = poremecaj, 
+       xlab = paste0("Samoprocijenjena razina: ", poremecaj))
+}
+
+```
+
+Iz grafova vidimo da podaci nisu normalno distribuirani, ali s obzirom na to da imamo dovoljno velik uzorak, temeljem centralnog graničnog teorema, koji kaže da će distribucija uzorka težiti normalnoj distribuciji kako se veličina uzorka povećava, možemo kasnije koristiti Pearsonov test.
+
+U sljedećem ispisu možemo vidjeti korelacije između frekvencija slušanja različitih glazbenih žanrova i samoprocijenjenih razina mentalnih poremećaja:
+
+```{r}
+
+# Pretvorba 'Frequency [žanr]' u numeričke vrijednosti
+frequency_mapping <- c("Never" = 0, "Rarely" = 1, "Sometimes" = 2, "Very frequently" = 3)
+
+for (genre in genres) {
+  cat("\n", genre, "\n")  # Ispis naziva žanra
+  for (mental_var in mental_health) {   
+    correlation <- cor(
+      as.numeric(frequency_mapping[dataset[[paste0("Frequency..", genre, ".")]]]), 
+      dataset[[mental_var]], 
+      use = "complete.obs"  # Ignoriranje NA vrijednosti
+    )
+    cat(mental_var, ":", correlation, "\n")  # Ispis korelacije
+  }
+}
+
+```
+
+Koristimo **Pearsonov test** za određivanje statističke značajnosti između frekvencije slušanja metal žanra i samoprocijenjene razine depresije.
+
+Postavljamo hipoteze:
+
+𝐻0: r = 0 (Nema linearne korelacije između frekvencije slušanja metal žanra i samoprocijene razine depresije.)
+
+𝐻1: r != 0 (Postoji linearna korelacija između frekvencije slušanja metal žanra i samoprocijene razine depresije.)
+
+```{r}
+metal_test <- cor.test(as.numeric(frequency_mapping[dataset$Frequency..Metal.]), dataset$Depression)
+print(metal_test)
+```
+
+U rezultatu testa vidimo da je p-vrijednost 1.437e-06 što je vrlo mala vrijednost te nam govori da je korelacija između frekvencije slušanja metal žanra i samoprocijenjene razine depresije statistički značajna na uobičajenoj razini značajnosti p \< 0.05.
+
+## ZADATAK 3. - povezanost između korištenog streaming servisa i sklonosti istraživanju
+
+U ovom ćemo zadatku provjeriti postoji li povezanost između korištenog streaming servisa i sklonosti istraživanju.
+
+Za to možemo koristiti Chi-squared test nezavisnosti:
+
+Povezanost između korištenog streaming servisa i sklonosti istraživanju osobe svodi se na test nezavisnosti kategorijskih podataka. U ovom slučaju testiramo nezavisnost stupaca *Primary.streaming.service* i *Exploratory*.
+
+Provodi se na način da se stvori kontingencijska tablica i izračunaju se očekivane vrijednosti. Zatim se računa $\chi^2 = \Sigma_{i,j}\frac{(o_{i,j} - e_{i,j})^2}{e_{i,j}}$ tj. provodi se $\chi^2$ test.
+
+```{r}
+tbl = table(dataset$Primary.streaming.service, dataset$Exploratory)
+head(tbl)
+```
+
+Potrebno je ukloniti jedan redak jer sadrži vrijednost "" za streaming servis te stvaramo kontingencijsku tablicu za naš primjer.
+
+```{r}
+tbl <- tbl[-1,]
+margin_tbl = addmargins(tbl)
+print(margin_tbl)
+```
+
+S obzirom da $\chi^2$ test pretpostavlja da je očekivana vrijednost pojedinog razreda veća ili jednaka 5, provjeravamo zadovoljava li naša tablica taj uvjet.
+
+```{r}
+for(col_name in colnames(margin_tbl)){
+  for(row_name in rownames(margin_tbl)){
+    if(!(row_name=='Sum' | col_name=='Sum')){
+      cat("ocekivane vrijednosti za ",col_name,"-",row_name,": ",margin_tbl[row_name,'Sum'] * margin_tbl['Sum',col_name] / margin_tbl['Sum','Sum'], '\n' )
+    }
+  }
+}
+```
+
+Primjećujemo da je očekivana vrijednost za Pandora-No iznosa manjeg od 5, stoga ne smijemo koristiti $\chi^2$ test već nam je potreban Fisher-Irwingov egzaktni test ( na razini značajnosti 0.05).
+
+Postavljamo hipoteze:
+
+H0: Ne postoji zavisnost između korištenog streaming servisa i sklonosti istraživanju.
+
+H1: Navedena obilježja su zavisna.
+
+```{r}
+fisher.test(tbl, workspace=2e8)
+```
+
+Dobivena p-vrijednost je znatno manja od postavljane razine značajnosti, stoga možemo odbaciti H0 u korist H1. Odnosno, na razini značajnosti 0.05, možemo tvrditi da postoji povezanost između korištenog streaming servisa i sklonosti istraživanju osobe.
+
+## ZADATAK 4. - razlika prosječnog broja sati slušanja glazbe među korisnicima ovisno o njihovim omiljenim žanrovima
+
+Provjerit ćemo razlikuje li se prosječni broj sati slušanja glazbe značajno među korisnicima ovisno o njihovim omiljenim žanrovima.
+
+Budući da ćemo testirati sredinu više populacija, koristit ćemo ANOVA metodu. Populacije ćemo grupirati po omiljenom žanru i zatim gledati prosječni broj sati.
+
+Pretpostavke ANOVA-e su: - nezavisnost pojedinih podataka u uzorcima, - normalna razdioba podataka, - homogenost varijanci među populacijama.
+
+Nezavisnost podataka je zadovoljena. Već smo zaključili da normalnost nije zadovoljena, međutim ANOVA je robusna na to uz dovoljnu količinu podatka i ako su populacije podjednako velike.
+
+```{r}
+# veličine populacija, koliko ima ljudi s određenim omiljenim žanrom
+table(dataset$Fav.genre)
+```
+
+Iz tablice vidimo da veličine populacija nisu jednake, što sugerira da ANOVA u tom slučaju ne bi bila robusna na nenormalnost i nehomogenost varijanci --\> potrebno je ispitati normalnost i homogenost prikladnim testovima.
+
+Provjera homogenosti varijanci među populacijama Bartlettovim testom:
+
+H0: varijance su homogene
+
+H1: barem dvije varijance nisu jednake
+
+```{r}
+# Testiranje homogenosti varijance uzoraka Bartlettovim testom
+bartlett.test(dataset$Hours.per.day ~ dataset$Fav.genre)
+
+sapply(split(dataset$Hours.per.day, dataset$Fav.genre), var)
+```
+
+Odbacujemo nultu hipotezu zbog signifikantne p-vrijednosti (\< 2.2e-16) i zaključujemo da varijance nisu homogene.
+
+Provodimo log transformaciju na slušanim satima i ponovno radimo test.
+
+H0: varijance su homogene
+
+H1: barem dvije varijance nisu jednake
+
+```{r}
+log_hours = log(dataset$Hours.per.day + 1)
+bartlett.test(log_hours ~ dataset$Fav.genre)
+hist(log_hours)
+```
+
+Dobili smo p-vrijednost = 0.254. Prema tome, ne odbacujemo H0 i zaključujemo da su varijance sada homogene među populacijama. Korisna nuspojava je da se log transformacijom približimo normalnoj razdiobi podataka, što se vidi na histogramu.
+
+--\> zadovoljene su pretpostavke ANOVA-e.
+
+Provodimo ANOVA test:
+
+H0: ne postoje značajne razlike u prosječnom broju sati slušanja glazbe među korisnicima ovisno o njihovim omiljenim žanrovima
+
+H1: postoje značajne razlike (...)
+
+```{r}
+anova = aov(log_hours ~ dataset$Fav.genre, data = dataset)
+summary(anova)
+```
+
+Budući da je p-vrijednost = 0.00284 \< 0.05, odbacujemo H0 i zaključujemo da postoje značajne razlike u prosječnom broju sati slušanja glazbe među korisnicima ovisno o njihovim omiljenim žanrovima.
+
+## ZADATAK 5. - Može li se iz zadanih podataka predvidjeti dob ispitanika?
+
+Predviđanje dobi ispitanika temelji se na pretpostavci da se može pronaći linearna veza između dobi i drugih varijabli u skupu podataka. Linearnu vezu između dobi i drugih varijabli dobit ćemo linearnom regresijom.
+
+Svi stupci u našem datasetu:
+
+-   Hours.per.day - kontinuirana varijabla
+
+-   BPM - kontinuirana varijabla
+
+-   Anxiety - uređajna varijabla
+
+-   Depression - uređajna varijabla
+
+-   Insomnia - uređajna varijabla
+
+-   OCD - uređajna varijabla
+
+-   Primary.streaming.service - dummy varijabla
+
+-   Fav.genre - dummy varijabla
+
+-   While.working - yes/no -\> 0 i 1 vrijednosti
+
+-   Instrumentalist - yes/no -\> 0 i 1 vrijednosti
+
+-   Composer - yes/no -\> 0 i 1 vrijednosti
+
+-   Exploratory - yes/no -\> 0 i 1 vrijednosti
+
+-   Foreign.languages - yes/no -\> 0 i 1 vrijednosti
+
+-   Frequency..Classical. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Country. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..EDM. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Folk. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Gospel. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Hip.hop. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Jazz. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..K.pop. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Latin. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Lofi. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Metal. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Pop. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..R.B. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Rap. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Rock. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Frequency..Video.game.music. - pretvorba u uređajnu skalu (1-5 vrijednosti)
+
+-   Music.effects - pretvorba u uređajnu skalu (1-3 vrijednosti)
+
+```{r}
+# Provjera broja NA za svaku varijablu
+na_counts <- sapply(dataset, function(x) sum(is.na(x)))
+
+# Ispis rezultata
+na_counts[c("Hours.per.day", "BPM", "Anxiety", "Depression", "Insomnia", "OCD", 
+            "Primary.streaming.service", "Fav.genre", "While.working", 
+            "Instrumentalist", "Composer", "Exploratory", "Foreign.languages", 
+            "Frequency..Classical.", "Frequency..Country.", "Frequency..EDM.", 
+            "Frequency..Folk.", "Frequency..Gospel.", "Frequency..Hip.hop.", 
+            "Frequency..Jazz.", "Frequency..K.pop.", "Frequency..Latin.", 
+            "Frequency..Lofi.", "Frequency..Metal.", "Frequency..Pop.", 
+            "Frequency..R.B.", "Frequency..Rap.", "Frequency..Rock.", 
+            "Frequency..Video.game.music.", "Music.effects", "BPM", "Age")]
+```
+
+Iz ispisa uočavamo da postoji čak 107 nedefiniranih odgovora na BPM, što bi moglo stvarati probleme.
+
+Pokušajmo transformirati kontinuirane varijable (hours per day, bpm) i provjeriti ima li naznaka linearnosti:
+
+```{r}
+# Filtriranje skupa podataka da ne uključuje BPM == 999999999 (ekstremna vrijednost)
+dataset <- dataset[dataset$BPM != 999999999, ]
+
+sum(is.na(dataset))  # Ukupan broj NA vrijednosti
+
+#ispis grafova potencijalnih transformacija da dobijemo linearnost
+plot(dataset$Hours.per.day, dataset$Age)
+plot(log(dataset$Hours.per.day), dataset$Age)
+plot(log(dataset$Hours.per.day + 1), dataset$Age)
+
+plot(dataset$BPM, dataset$Age)
+plot(log(dataset$BPM), dataset$Age) 
+plot(1/dataset$BPM, dataset$Age)
+
+
+plot(log(dataset$Hours.per.day + 1) * dataset$BPM, dataset$Age)
+plot(dataset$Hours.per.day * dataset$BPM, dataset$Age)
+
+unique(dataset$BPM)
+
+
+```
+
+Kako bismo utvrdili postoji li potencijalna korist od određenih transformacija, izgradit ćemo linearni model isključivo za njih i analizirati značajnost dobivenog modela.
+
+```{r}
+fit.hours = lm(Age ~ dataset$Hours.per.day, data = dataset)
+summary(fit.hours)
+
+fit.bpm = lm(Age ~ dataset$BPM, data = dataset)
+summary(fit.bpm)
+
+fit.hours_tr = lm(Age ~ log(dataset$Hours.per.day + 1), data = dataset)
+summary(fit.hours_tr)
+
+fit.hours_tr2 = lm(Age ~ dataset$Hours.per.day * dataset$BPM, data = dataset)
+summary(fit.hours_tr2)
+```
+
+Uočavamo da logaritamska transformacija log(dataset\$Hours.per.day + 1) ima potencijala za biti uvršena u model (p \< 0.05)
+
+Uklanjamo stupac BPM i sve retke koji sadrže NA vrijednosti kako bismo izbjegli potencijalne pogreške ili nepouzdane rezultate. Budući da prethodna analiza nije pokazala naznake značajnosti za ovaj stupac, uklanjamo ga kako bismo pojednostavili analizu i spriječili njegovu smetnju.
+
+```{r}
+print("broj NA vrijednosti u datasetu bez 999999999 vrijednosti za BPM:")
+sum(is.na(dataset))
+dataset = read.csv("Music and mental health dataset.csv", sep = ",")
+print("ukupan broj NA vrijednosti:")
+sum(is.na(dataset))
+dataset <- dataset[, !(names(dataset) %in% c("BPM"))]
+print("broj NA vrijednosti nakon micanja stupca BPM")
+sum(is.na(dataset))  
+dataset <- na.omit(dataset)
+print("konacni broj NA vrijednosti:")
+sum(is.na(dataset))
+
+```
+
+Nakon uklonjenog stupca BPM i svih redaka koji sadrže NA, provjeravamo vrijedi li i dalje prijašnji zaključak o logaritamskoj transfromaciji log(dataset\$Hours.per.day + 1) te vidimo da je p-vrijednost i dalje manja od 0.05.
+
+```{r}
+fit.hours_tr = lm(Age ~ log(dataset$Hours.per.day + 1), data = dataset)
+summary(fit.hours_tr)
+```
+
+Kod kategorijskih varijabli, potrebno je koristiti tzv. dummy varijable - svaka kategorija u kategorijskoj varijabli predstavljena je svojom vlastitom indikatorskom varijablom koja poprima vrijednost 1 u slučaju da originalna kategorijska varijabla poprima vrijednost te kategorije, a 0 inače.
+
+Uvijek je potrebno isključiti jednu od dummy varijabli iz modela zbog zavisnosti.
+
+```{r}
+
+dataset <- dataset[dataset$Primary.streaming.service != "", ]
+
+```
+
+```{r}
+require(fastDummies)
+
+# dodaje dummy stupce u obliku: Primary.streaming.service_Spotify, za svaki servis
+dataset_dummy = dummy_cols(dataset,select_columns=c('Primary.streaming.service', "Fav.genre"))
+
+columns_to_remove <- c("Primary.streaming.service", "Timestamp", "Permissions", "Fav.genre")
+dataset_dummy <- dataset_dummy[, !(names(dataset_dummy) %in% columns_to_remove)]
+
+```
+
+Izbacivanje po jedne dummy varijable:
+
+```{r}
+require(fastDummies)
+
+columns_to_remove <- c("Primary.streaming.service_I do not use a streaming service.", "Fav.genre_Video game music")
+dataset_dummy <- dataset_dummy[, !(names(dataset_dummy) %in% columns_to_remove)]
+
+```
+
+Pretvaranje svih potrebnih vrijednosti u uređajnu skalu:
+
+```{r}
+
+dataset_dummy$Frequency..Country. <- as.numeric(factor(
+  dataset_dummy$Frequency..Country.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Folk. <- as.numeric(factor(
+  dataset_dummy$Frequency..Folk.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Hip.hop. <- as.numeric(factor(
+  dataset_dummy$Frequency..Hip.hop.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$Frequency..K.pop. <- as.numeric(factor(
+  dataset_dummy$Frequency..K.pop.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$Frequency..Rock. <- as.numeric(factor(
+  dataset_dummy$Frequency..Rock.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$Frequency..Lofi. <- as.numeric(factor(
+  dataset_dummy$Frequency..Lofi.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$Frequency..Pop. <- as.numeric(factor(
+  dataset_dummy$Frequency..Pop.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$Frequency..Rap. <- as.numeric(factor(
+  dataset_dummy$Frequency..Rap.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Video.game.music. <- as.numeric(factor(
+  dataset_dummy$Frequency..Video.game.music.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$Frequency..EDM. <- as.numeric(factor(
+  dataset_dummy$Frequency..EDM.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Gospel. <- as.numeric(factor(
+  dataset_dummy$Frequency..Gospel.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Metal. <- as.numeric(factor(
+  dataset_dummy$Frequency..Metal.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Latin. <- as.numeric(factor(
+  dataset_dummy$Frequency..Latin.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..R.B. <- as.numeric(factor(
+  dataset_dummy$Frequency..R.B.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Jazz. <- as.numeric(factor(
+  dataset_dummy$Frequency..Jazz.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+dataset_dummy$Frequency..Classical. <- as.numeric(factor(
+  dataset_dummy$Frequency..Classical.,
+  levels = c("Never", "Rarely", "Sometimes", "frequently", "Very frequently"),
+  ordered = TRUE
+))
+
+
+dataset_dummy$While.working <- ifelse(dataset_dummy$While.working == "Yes", 1, 0)
+
+dataset_dummy$Instrumentalist <- ifelse(dataset_dummy$Instrumentalist == "Yes", 1, 0)
+
+dataset_dummy$Composer <- ifelse(dataset_dummy$Composer == "Yes", 1, 0)
+
+dataset_dummy$Exploratory <- ifelse(dataset_dummy$Exploratory == "Yes", 1, 0)
+
+dataset_dummy$Foreign.languages <- ifelse(dataset_dummy$Foreign.languages == "Yes", 1, 0)
+
+dataset_dummy <- dataset_dummy[dataset_dummy$Music.effects != "", ]
+unique(dataset_dummy$Music.effects)
+
+dataset_dummy$Music.effects <- as.numeric(factor(
+  dataset_dummy$Music.effects,
+  levels = c("No effect", "Improve",  "Worsen"),
+  ordered = TRUE
+))
+
+#mozemo vidjeti kakve nam sada vrijednosti poprimaju za sve dodane dummy varijable i varijable prebačene u uređajnu skalu
+head(dataset_dummy)
+
+```
+
+Kako bi ispravno usporedili modele, potrebno je provjeriti da pretpostavke modela nisu (jako) narušene.
+
+Prepostavke:
+
+-   regresori (multivarijatna regresija - regresori ne smiju biti međusobno jako korelirani)
+-   reziduali (normalnost reziduala, homogenost varijance)
+
+```{r}
+# provjeriti nezavisnost regresora ( + ostatak na kraju nakon definicije modela)
+# Korelacija između regresora
+
+# Korelacije između svih regresora
+cor_matrix <- cor(dataset_dummy)
+print(cor_matrix)
+
+```
+
+Za bolju preglednost iz matrice korelacija ispisujemo 30 najvećih korelacija te varijable na koje se te vrijednosti odnose.
+
+```{r}
+diag(cor_matrix) <- NA
+library(reshape2)
+cor_df <- melt(cor_matrix, na.rm = TRUE)
+cor_df <- cor_df[cor_df$value < 1, ]
+top_correlations <- cor_df[order(-cor_df$value), ][1:30, ]
+print(top_correlations)
+```
+
+Uočena je visoka korelacija između sljedećih parova varijabli: Frequency..Rap. i Frequency..Hip.hop. (77.84%), Fav.genre_Metal i Frequency..Metal. (61.51%), ...
+
+To treba uzeti u obzir pri izradi modela, jer visoka korelacija između varijabli može dovesti do višestruke kolinearnosti. Ako se odlučimo uključiti jednu varijablu iz takvih parova u konačni model, potrebno je ukloniti onu varijablu koja je visoko korelirana s njom kako bi se izbjegli problemi u procjeni koeficijenata i osigurala interpretabilnost modela.
+
+Model sa svim stupcima:
+
+```{r}
+
+# Višestruka linearna regresija 
+fit.multi = lm(Age ~ ., data = dataset_dummy)
+
+# Sažetak modela
+summary(fit.multi)
+```
+
+Značajne varijable (p \< 0.05): Instrumentalist, Exploratory, Frequency..Classical., Frequency..Jazz., Frequency..Lofi., Frequency..Pop., Frequency..R.B., Frequency..Rap., Anxiety, OCD, Frequency..Video.game.music., Primary.streaming.service_Pandora, Primary.streaming.service_Spotify, Fav.genre_Gospel
+
+Model sa značajnim stupcima:
+
+```{r}
+
+# Višestruka linearna regresija (varijable p < 0.05)
+fit.multi2 = lm(Age ~ Instrumentalist + Exploratory + Frequency..Classical. + Frequency..Jazz. + Frequency..Lofi. + Frequency..Pop. + Frequency..R.B. + Frequency..Rap.+ Anxiety + OCD + Frequency..Video.game.music. + Primary.streaming.service_Pandora + Primary.streaming.service_Spotify + Fav.genre_Gospel, data = dataset_dummy)
+
+# Sažetak modela
+summary(fit.multi2)
+```
+
+Uočavamo da je novi Adjusted R-squared = 0.2813 manji od početnog za fit.multi od 0.3093, ali ima manje varijabli.
+
+Probat ćemo proširiti kriterij značajnosti u odnosu na prethodni model, tako da kao značajne uvrstimo i varijable za koje vrijedi p \< 0.1, umjesto samo onih s p \< 0.05. Na taj način, ukoliko primijetimo povećanje prilagođenog R² (Adjusted R-squared), razmotrit ćemo uključivanje tih varijabli u konačni model.
+
+Nove značajne varijable (p \< 0.1): Instrumentalist, Exploratory, Frequency..Classical., Frequency..Jazz., Frequency..Lofi., Frequency..Pop., Frequency..R.B., Frequency..Rap., Anxiety, OCD, Frequency..Video.game.music., Primary.streaming.service_Pandora, Primary.streaming.service_Spotify, Fav.genre_Gospel, Frequency..Country., Frequency..Folk., Insomnia, `Primary.streaming.service_Apple Music`, `Primary.streaming.service_YouTube Music`, Fav.genre_Rock
+
+```{r}
+# Višestruka linearna regresija (varijable p < 0.1)
+fit.multi22 = lm(Age ~ Instrumentalist + Exploratory + Frequency..Classical. + Frequency..Jazz. + Frequency..Lofi. + Frequency..Pop. + Frequency..R.B. + Frequency..Rap.+ Anxiety + OCD + Frequency..Video.game.music. + Primary.streaming.service_Pandora + Primary.streaming.service_Spotify + Fav.genre_Gospel + Frequency..Country. + Frequency..Folk. + Insomnia + `Primary.streaming.service_Apple Music` + `Primary.streaming.service_YouTube Music` + Fav.genre_Rock, data = dataset_dummy)
+
+# Sažetak modela
+summary(fit.multi22)
+```
+
+Uočavamo da smo dodavanjem varijabli s p \< 0.1 uspjeli povećati Adjusted R-squared s 0.2813 na 0.3187, što predstavlja najbolji rezultat do sada.
+
+Uočavamo da su u novom modelu sve varijable značajne na razini 0.05, osim OCD, Frequency..Country. i `Primary.streaming.service_YouTube Music` Pokušajmo ih izbaciti iz modela u nadi da ćemo time možda povećati Adjusted R-squared:
+
+```{r}
+# Višestruka linearna regresija
+fit.multi3 = lm(Age ~ Instrumentalist + Exploratory + Frequency..Classical. + Frequency..Jazz. + Frequency..Lofi. + Frequency..Pop. + Frequency..R.B. + Frequency..Rap.+ Anxiety + Frequency..Video.game.music. + Primary.streaming.service_Pandora + Primary.streaming.service_Spotify + Fav.genre_Gospel + Frequency..Folk. + Insomnia + `Primary.streaming.service_Apple Music` + Fav.genre_Rock, data = dataset_dummy)
+
+# Sažetak modela
+summary(fit.multi3)
+```
+
+Nažalost, Adjusted R-squared se smanjio, stoga ostajemo pri modelu fit.multi22, koji uključuje varijable s p-vrijednostima malo iznad 0.05, ali koje i dalje pružaju određeni doprinos ukupnoj vrijednosti Adjusted R-squared.
+
+Model s višim Adjusted R-squared i više varijabli može biti bolji jer objašnjava veću količinu varijabilnosti u podacima, može donijeti preciznija predviđanja i obuhvatiti dublje odnose među varijablama. Ipak, važno je paziti na prekomjerno prilagođavanje (overfitting) modela.
+
+Pokušajmo u model uvrstiti i kontinuiranu varijablu Hours.per.day s transformacijom log(dataset\$Hours.per.day + 1)
+
+```{r}
+dataset_dummy2 <- dataset_dummy
+dataset_dummy2$log_Hours_per_day <- log(dataset_dummy2$Hours.per.day + 1)
+
+```
+
+```{r}
+
+# Višestruka linearna regresija s transformiranom varijablom
+fit.multi33 <- lm(Age ~ Instrumentalist + Exploratory + Frequency..Classical. + Frequency..Jazz. + Frequency..Lofi. + Frequency..Pop. + Frequency..R.B. + Frequency..Rap. + Anxiety + OCD + Frequency..Video.game.music. + Primary.streaming.service_Pandora + Primary.streaming.service_Spotify + Fav.genre_Gospel + Frequency..Country. + Frequency..Folk. + Insomnia + `Primary.streaming.service_Apple Music` + `Primary.streaming.service_YouTube Music` + Fav.genre_Rock + log_Hours_per_day, 
+                  data = dataset_dummy2)
+
+# Sažetak modela
+summary(fit.multi33)
+
+```
+
+Nažalost, p-vrijednost transformirane varijable log(Hours.per.day + 1) iznosi 0.38567, što ukazuje da njezin doprinos ukupnom modelu nije statistički značajan.
+
+ZAKLJUČAK: Na kraju se kao najbolja opcija pokazao model fit.multi22 čiji Adjusted R-squared iznosi 0.3187, što znači da model objašnjava oko 31.87% varijabilnosti u podacima vezanim za dob. Iako je ovo relativno skromna vrijednost, model sadrži razne varijable (kao što su različite glazbene žanrove, psihološki faktori, i streaming servisi), koje mogu imati indirektan utjecaj na dob. To pokazuje da možemo koristiti ove varijable kao prediktore, no model još uvijek nije savršen i postoji prostor za poboljšanje. Bilo bi korisno dodati neke druge stupce u istraživanje kako bi se poboljšala prediktivna moć modela i dodatno istražila moguća objašnjenja za varijaciju u dobi.
+
+Provjera pretpostavki za reziduale:
+
+```{r}
+
+# q-q plot za normalnost reziduala
+qqnorm(residuals(fit.multi22))
+qqline(residuals(fit.multi22), col = "red")
+
+# testiranje homogenosti varijance
+# Scatter plot reziduala
+plot(fitted(fit.multi22), residuals(fit.multi22), main = "Reziduali vs Fitted vrijednosti",
+     xlab = "Predviđene vrijednosti", ylab = "Reziduali")
+abline(h = 0, col = "red")
+
+```
+
+Unatoč manjoj odstupanju od idealnih uvjeta pretpostavki, regresijski model i dalje pruža korisne i interpretabilne rezultate. S obzirom na prirodu podataka, možemo zaključiti da model ostaje robusan i da nudi korisne uvide, iako postoje određene varijacije u podacima koje ne narušavaju značajno ukupnu kvalitetu predikcija.
